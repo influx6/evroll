@@ -29,6 +29,9 @@ func (r *Roller) RevMunch(i interface{}) {
 }
 
 func (r *Roller) ReverseCallAt(i int, g interface{}) {
+	if len(r.enders) <= 0 {
+		return
+	}
 	total := len(r.enders) - 1
 	loc := total - i
 
@@ -50,6 +53,9 @@ func (r *Roller) ReverseCallAt(i int, g interface{}) {
 }
 
 func (r *Roller) CallAt(i int, g interface{}) {
+	if len(r.enders) <= 0 {
+		return
+	}
 	if len(r.enders) > i {
 		val := r.enders[i]
 		if val != nil {
