@@ -5,7 +5,7 @@ import (
 )
 
 type Next func(i interface{})
-type Callable func(i interface{}, n Next)
+type Callable func(i interface{}, f func(g interface{}))
 type CallList []Callable
 
 type RollerInterface interface {
