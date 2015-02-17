@@ -14,10 +14,22 @@ type RollerInterface interface {
 	RevMunch(i interface{})
 	CallAt(f int)
 	ReverseCallAt(f int)
+	onRoller(i interface{}, f func(g interface{}))
+	onRevRoller(i interface{}, f func(g interface{}))
 }
 
 type Roller struct {
 	enders []Callable
+}
+
+func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
+	r.Munch(i)
+	next(nil)
+}
+
+func (r *Roller) onRevRoller(i interface{}, next func(g interface{})) {
+	r.RevMunch(i)
+	next(nil)
 }
 
 func (r *Roller) Munch(i interface{}) {
