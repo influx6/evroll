@@ -85,7 +85,7 @@ func (r *Roller) CallAt(i int, g interface{}) {
 	}
 }
 
-func (r *Roller) Or(f func(i interface{})) {
+func (r *Roller) Or(f func(c interface{})) {
 	r.End(func(i interface{}, next func(t interface{})) {
 		f(i)
 		next(nil)
