@@ -107,3 +107,29 @@ func (r *Roller) String() string {
 func NewRoller() *Roller {
 	return &Roller{[]Callable{}}
 }
+
+type Event interface{}
+type EventHandler func(e Event)
+
+type EventRoll struct {
+	Handlers []EventHandler
+	Id       string
+}
+
+func (e *EventRoll) Listen(f ...EventHandler) {
+	e.Handlers = append(e.Handlers, f...)
+}
+
+func (e *EventRoll) Emit(f Event) {
+	if len(e.Handlers) <= 0 {
+		return
+	}
+
+	for _, cur := range e.Handlers {
+		cur(f)
+	}
+}
+
+func NewEvents(id string) *EventRoll {
+	return &EventRoll{make([]EventHandler, 0), id}
+}
