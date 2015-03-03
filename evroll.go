@@ -2,14 +2,20 @@ package evroll
 
 import (
 	"fmt"
+	"github.com/influx6/immute"
 )
 
 type Next func(i interface{})
 type Callable func(i interface{}, f func(g interface{}))
+type Callabut func(i interface{})
 type CallList []Callable
+
+type Event interface{}
+type EventHandler func(e Event)
 
 type RollerInterface interface {
 	End(r Callable)
+	Or(r Callabut)
 	Munch(i interface{})
 	RevMunch(i interface{})
 	CallAt(f int)
@@ -20,6 +26,44 @@ type RollerInterface interface {
 
 type Roller struct {
 	enders []Callable
+}
+
+type Streamable interface {
+	Send(interface{})
+}
+
+type Streams struct {
+	*Roller
+	Buffer *immute.Sequence
+	active bool
+}
+
+func (s *Streams) Init() {
+	s.End(func(data interface{}, next func(change interface{})) {
+		s.Stream()
+		next(nil)
+	})
+}
+
+func (s *Streams) Send(data interface{}) {
+	s.Buffer.Add(data, nil)
+
+	if s.active {
+		return
+	}
+
+	s.Stream()
+}
+
+func (s *Streams) Stream() {
+	size := s.Buffer.Length()
+
+	if size <= 0 {
+		return
+	}
+
+	cur := s.Buffer.Delete(0)
+	s.RevMunch(cur)
 }
 
 func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
@@ -108,9 +152,6 @@ func NewRoller() *Roller {
 	return &Roller{[]Callable{}}
 }
 
-type Event interface{}
-type EventHandler func(e Event)
-
 type EventRoll struct {
 	Handlers []EventHandler
 	Id       string
@@ -132,4 +173,11 @@ func (e *EventRoll) Emit(f Event) {
 
 func NewEvents(id string) *EventRoll {
 	return &EventRoll{make([]EventHandler, 0), id}
+}
+
+func NewStream() *Streams {
+	list := immute.CreateList(make([]interface{}, 0))
+	s := &Streams{NewRoller(), list, false}
+	s.Init()
+	return s
 }
