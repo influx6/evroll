@@ -67,6 +67,10 @@ func (s *Streams) Send(data interface{}) {
 	// s.Stream()
 }
 
+func (s *Streams) Clear() {
+	s.Buffer.Clear()
+}
+
 func (s *Streams) UnGuardedNotifyDrain(data interface{}) {
 	s.Drainers.Each(func(n interface{}, k interface{}) interface{} {
 		fn, ok := n.(Callabut)
