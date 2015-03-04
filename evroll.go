@@ -40,9 +40,10 @@ type Streamable interface {
 
 type Streams struct {
 	*Roller
-	Buffer  *immute.Sequence
-	active  bool
-	reverse bool
+	Buffer   *immute.Sequence
+	Drainers *immute.Sequence
+	active   bool
+	reverse  bool
 }
 
 func (s *Streams) Init() {
@@ -52,14 +53,31 @@ func (s *Streams) Init() {
 	})
 }
 
+func (s *Streams) Drain(drainer Callabut) {
+	s.Drainers.Add(drainer, nil)
+}
+
 func (s *Streams) Send(data interface{}) {
 	s.Buffer.Add(data, nil)
 
-	if s.active {
-		return
-	}
+	// if s.active {
+	// 	return
+	// }
 
-	s.Stream()
+	// s.Stream()
+}
+
+func (s *Streams) NotifyDrain(data interface{}) {
+	s.Drainers.Each(func(n interface{}, k interface{}) interface{} {
+		fn, ok := n.(Callabut)
+
+		if !ok {
+			return nil
+		}
+
+		fn(data)
+		return nil
+	}, func(_ int, _ interface{}) {})
 }
 
 func (s *Streams) Stream() {
@@ -72,6 +90,7 @@ func (s *Streams) Stream() {
 	size := s.Buffer.Length()
 
 	if size <= 0 {
+		s.NotifyDrain(true)
 		return
 	}
 
@@ -83,7 +102,7 @@ func (s *Streams) Stream() {
 		s.Munch(cur)
 	}
 
-	s.active = true
+	// s.active = true
 }
 
 func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
@@ -259,7 +278,8 @@ func NewEvents(id string) *EventRoll {
 
 func NewStream(reverse bool) *Streams {
 	list := immute.CreateList(make([]interface{}, 0))
-	s := &Streams{NewRoller(), list, false, reverse}
+	drains := immute.CreateList(make([]interface{}, 0))
+	s := &Streams{NewRoller(), list, drains, false, reverse}
 	s.Init()
 	return s
 }
