@@ -47,6 +47,7 @@ type Streams struct {
 
 func (s *Streams) Init() {
 	s.ReceiveDone(func(data interface{}) {
+		s.active = false
 		s.Stream()
 	})
 }
@@ -81,6 +82,8 @@ func (s *Streams) Stream() {
 	} else {
 		s.Munch(cur)
 	}
+
+	s.active = true
 }
 
 func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
