@@ -67,7 +67,7 @@ func (s *Streams) Send(data interface{}) {
 	// s.Stream()
 }
 
-func (s *Streams) NotifyDrain(data interface{}) {
+func (s *Streams) UnGuardedNotifyDrain(data interface{}) {
 	s.Drainers.Each(func(n interface{}, k interface{}) interface{} {
 		fn, ok := n.(Callabut)
 
@@ -80,6 +80,17 @@ func (s *Streams) NotifyDrain(data interface{}) {
 	}, func(_ int, _ interface{}) {})
 }
 
+func (s *Streams) NotifyDrain(data interface{}) bool {
+	size := s.Buffer.Length()
+
+	if size <= 0 {
+		s.UnGuardedNotifyDrain(data)
+		return true
+	}
+
+	return false
+}
+
 func (s *Streams) Stream() {
 	listeners := s.Size()
 
@@ -87,10 +98,9 @@ func (s *Streams) Stream() {
 		return
 	}
 
-	size := s.Buffer.Length()
+	state := s.NotifyDrain(true)
 
-	if size <= 0 {
-		s.NotifyDrain(true)
+	if state {
 		return
 	}
 
