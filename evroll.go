@@ -57,6 +57,12 @@ func (s *Streams) Drain(drainer Callabut) {
 	s.Drainers.Add(drainer, nil)
 }
 
+func (s *Streams) Collect(fn func(data interface{})) {
+	var data = s.Buffer.Obj()
+	s.Buffer.Clear()
+	fn(data)
+}
+
 func (s *Streams) Send(data interface{}) {
 	s.Buffer.Add(data, nil)
 
