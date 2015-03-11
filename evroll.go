@@ -10,9 +10,6 @@ type Callable func(i interface{}, f func(g interface{}))
 type Callabut func(i interface{})
 type CallList []Callable
 
-type Event interface{}
-type EventHandler func(e Event)
-
 type RollerInterface interface {
 	Size() int
 	DecidedDone(r Callable)
@@ -24,7 +21,7 @@ type RollerInterface interface {
 	CallAt(f int)
 	CallDoneAt(f int)
 	ReverseCallAt(f int)
-	ReverseDoneCallAt(f int)
+	ReverseCallDoneAt(f int)
 	onRoller(i interface{}, f func(g interface{}))
 	onRevRoller(i interface{}, f func(g interface{}))
 }
@@ -34,67 +31,103 @@ type Roller struct {
 	doners []Callable
 }
 
+type Eventables interface {
+	Emit(interface{})
+	Listen(Callabut)
+}
+
 type Streamable interface {
 	Send(interface{})
+	Drain(Callabut)
+	CollectTo(Callabut)
+	Collect() []interface{}
+	CollectAndStream()
+	NotifyDrain()
+	Clear()
 }
 
 type Streams struct {
 	*Roller
-	Buffer   *immute.Sequence
-	Drainers *immute.Sequence
-	active   bool
-	reverse  bool
+	Buffer  *immute.Sequence
+	Drains  *EventRoll
+	manual  bool
+	reverse bool
+	drained bool
 }
 
-func (s *Streams) Init() {
-	s.ReceiveDone(func(data interface{}) {
-		s.active = false
-		s.Stream()
-	})
+type EventRoll struct {
+	Handlers *immute.Sequence
+	Id       string
 }
 
-func (s *Streams) Drain(drainer Callabut) {
-	s.Drainers.Add(drainer, nil)
+func (e *EventRoll) Listen(f ...Callabut) {
+	for _, v := range f {
+		e.Handlers.Add(v, nil)
+	}
 }
 
-func (s *Streams) Collect(fn func(data interface{})) {
-	var data = s.Buffer.Obj()
+func (e *EventRoll) Emit(val interface{}) {
+	e.Handlers.Each(func(data interface{}, key interface{}) interface{} {
+		fn, ok := data.(Callabut)
+
+		if !ok {
+			return nil
+		}
+
+		fn(val)
+		return nil
+	}, func(_ int, _ interface{}) {})
+}
+
+func (s *Streams) Drain(drainer ...Callabut) {
+	s.Drains.Listen(drainer...)
+}
+
+func (s *Streams) Collect() []interface{} {
+	data, ok := s.Buffer.Obj().([]interface{})
+
+	if !ok {
+		return nil
+	}
+
 	s.Buffer.Clear()
+	return data
+}
+
+func (s *Streams) CollectAndStream() {
+	s.Send(s.Collect())
+}
+
+func (s *Streams) CollectTo(fn func(data []interface{})) {
+	var data = s.Collect()
 	fn(data)
 }
 
 func (s *Streams) Send(data interface{}) {
+	s.drained = false
 	s.Buffer.Add(data, nil)
 
-	// if s.active {
-	// 	return
-	// }
+	if s.manual {
+		return
+	}
 
-	// s.Stream()
+	s.Stream()
 }
 
 func (s *Streams) Clear() {
 	s.Buffer.Clear()
 }
 
-func (s *Streams) UnGuardedNotifyDrain(data interface{}) {
-	s.Drainers.Each(func(n interface{}, k interface{}) interface{} {
-		fn, ok := n.(Callabut)
-
-		if !ok {
-			return nil
-		}
-
-		fn(data)
-		return nil
-	}, func(_ int, _ interface{}) {})
-}
-
 func (s *Streams) NotifyDrain(data interface{}) bool {
 	size := s.Buffer.Length()
 
+	if s.drained {
+		return true
+	}
+
 	if size <= 0 {
-		s.UnGuardedNotifyDrain(data)
+		s.Drains.Emit(data)
+		s.drained = true
 		return true
 	}
 
@@ -121,8 +154,6 @@ func (s *Streams) Stream() {
 	} else {
 		s.Munch(cur)
 	}
-
-	// s.active = true
 }
 
 func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
@@ -143,7 +174,7 @@ func (r *Roller) RevMunch(i interface{}) {
 	r.ReverseCallAt(0, i)
 }
 
-func (r *Roller) ReverseDoneCallAt(i int, g interface{}) {
+func (r *Roller) ReverseCallDoneAt(i int, g interface{}) {
 	if len(r.doners) <= 0 {
 		return
 	}
@@ -157,11 +188,11 @@ func (r *Roller) ReverseDoneCallAt(i int, g interface{}) {
 
 				ind := i + 1
 				if f == nil {
-					r.ReverseDoneCallAt(ind, g)
+					r.ReverseCallDoneAt(ind, g)
 					return
 				}
 
-				r.ReverseDoneCallAt(ind, f)
+				r.ReverseCallDoneAt(ind, f)
 			})
 		}
 	}
@@ -189,7 +220,7 @@ func (r *Roller) ReverseCallAt(i int, g interface{}) {
 			})
 		}
 	} else {
-		r.ReverseDoneCallAt(0, g)
+		r.ReverseCallDoneAt(0, g)
 	}
 }
 
@@ -269,37 +300,28 @@ func (r *Roller) String() string {
 	return fmt.Sprint(r.enders)
 }
 
+//NewRoller creates and return a pointer to a new roller struct ready for middleware style pattern stack
 func NewRoller() *Roller {
 	return &Roller{[]Callable{}, []Callable{}}
 }
 
-type EventRoll struct {
-	Handlers []EventHandler
-	Id       string
-}
-
-func (e *EventRoll) Listen(f ...EventHandler) {
-	e.Handlers = append(e.Handlers, f...)
-}
-
-func (e *EventRoll) Emit(f Event) {
-	if len(e.Handlers) <= 0 {
-		return
-	}
-
-	for _, cur := range e.Handlers {
-		cur(f)
-	}
-}
-
-func NewEvents(id string) *EventRoll {
-	return &EventRoll{make([]EventHandler, 0), id}
-}
-
-func NewStream(reverse bool) *Streams {
+//NewEvent creates a new eventroll for event notification to its callbacks
+func NewEvent(id string) *EventRoll {
 	list := immute.CreateList(make([]interface{}, 0))
-	drains := immute.CreateList(make([]interface{}, 0))
-	s := &Streams{NewRoller(), list, drains, false, reverse}
-	s.Init()
+	return &EventRoll{list, id}
+}
+
+//NewStream creates a new Stream struct and accepts two bool values:
+//		reverse bool: indicate wether callback queue be called in reverse or not
+//		manaul bool: indicates wether it should be a push model or a pull model
+//(push means every addition of data calls the notification of callbacks immediately)
+//(pull) means the Stream() method is called by the caller when ready to notify callbacks
+func NewStream(reverse bool, manaul bool) *Streams {
+	list := immute.CreateList(make([]interface{}, 0))
+	drain := NewEvent("drain")
+	s := &Streams{NewRoller(), list, drain, manaul, reverse, false}
+	s.ReceiveDone(func(data interface{}) {
+		s.Stream()
+	})
 	return s
 }
