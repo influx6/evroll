@@ -255,7 +255,7 @@
 
             `
 
-        *Evroll.Roller.Emit(data interface{})  void
+        *Evroll.EventRoll.Emit(data interface{})  void
             This reciever method calls all added callbacks with the data provided by the caller
 
             `
