@@ -44,6 +44,7 @@ type Streamable interface {
 	CollectAndStream()
 	NotifyDrain()
 	Clear()
+	Seq() *immute.Sequence
 }
 
 type Streams struct {
@@ -77,6 +78,10 @@ func (e *EventRoll) Emit(val interface{}) {
 		fn(val)
 		return nil
 	}, func(_ int, _ interface{}) {})
+}
+
+func (s *Streams) Seq() *immute.Sequence {
+	return s.Buffer.Seq()
 }
 
 func (s *Streams) Drain(drainer ...Callabut) {
