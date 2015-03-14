@@ -38,13 +38,14 @@ type Eventables interface {
 
 type Streamable interface {
 	Send(interface{})
+	Seq() *immute.Sequence
 	Drain(Callabut)
 	CollectTo(Callabut)
 	Collect() []interface{}
 	CollectAndStream()
 	NotifyDrain()
 	Clear()
-	Seq() *immute.Sequence
+	BufferSize() int
 }
 
 type Streams struct {
@@ -119,6 +120,10 @@ func (s *Streams) Send(data interface{}) {
 	s.Stream()
 }
 
+func (s *Streams) BufferSize() int {
+	return s.Buffer.Length()
+}
+
 func (s *Streams) Clear() {
 	s.Buffer.Clear()
 }
@@ -189,15 +194,15 @@ func (r *Roller) ReverseCallDoneAt(i int, g interface{}) {
 	if loc >= 0 {
 		val := r.doners[loc]
 		if val != nil {
-			val(g, func(f interface{}) {
+			val(g, func(fval interface{}) {
 
 				ind := i + 1
-				if f == nil {
+				if fval == nil {
 					r.ReverseCallDoneAt(ind, g)
 					return
 				}
 
-				r.ReverseCallDoneAt(ind, f)
+				r.ReverseCallDoneAt(ind, fval)
 			})
 		}
 	}
@@ -213,15 +218,16 @@ func (r *Roller) ReverseCallAt(i int, g interface{}) {
 	if loc >= 0 {
 		val := r.enders[loc]
 		if val != nil {
-			val(g, func(f interface{}) {
+			val(g, func(fval interface{}) {
 
 				ind := i + 1
-				if f == nil {
+
+				if fval == nil {
 					r.ReverseCallAt(ind, g)
 					return
 				}
 
-				r.ReverseCallAt(ind, f)
+				r.ReverseCallAt(ind, fval)
 			})
 		}
 	} else {
