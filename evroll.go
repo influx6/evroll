@@ -158,8 +158,12 @@ func (s *Streams) Send(data interface{}) {
 
 	if s.Size() > 0{
 		if !s.manual{
-			s.Delegate(data)
-			s.Drains.Emit(data)
+			if s.BufferSize() > 0 {
+				s.Buffer.Add(data,nil)
+			}else{
+				s.Delegate(data)
+				s.Drains.Emit(data)
+			}
 		}else{
 			s.Buffer.Add(data,nil)
 		}
