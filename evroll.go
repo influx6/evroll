@@ -36,6 +36,13 @@ type Eventables interface {
 	Listen(Callabut)
 }
 
+type StreamPackers interface {
+	Flush()
+	Send(interface{})
+	Subscribe(bool,bool)
+	WeakSubscribe(bool,bool)
+}
+
 type Streamable interface {
 	Send(interface{})
 	Seq() *immute.Sequence
@@ -54,12 +61,50 @@ type Streams struct {
 	Drains  *EventRoll
 	manual  bool
 	reverse bool
-	drained bool
 }
 
 type EventRoll struct {
 	Handlers *immute.Sequence
 	Id       string
+}
+
+//Provides a persistent streams data
+type StreamPack struct {
+	Buffer  *immute.Sequence
+	Adds	*EventRoll
+}
+
+func (s *StreamPack) Flush() {
+	s.Buffer.Clear()
+}
+
+func (s *StreamPack) Send(data interface{}) {
+	s.Adds.Emit(data)
+}
+
+func (s *StreamPack) WeakSubscribe(reverse bool,manual bool) *Streams {
+	sm := NewStream(reverse,manual)
+
+	s.Buffer.Each(func(data interface{}, key interface{}) interface{} {
+		sm.Send(data)
+		return nil
+	}, func(_ int, _ interface{}) {})
+
+	return sm
+}
+
+func (s *StreamPack) Subscribe(reverse bool,manual bool) *Streams {
+	sm := NewStream(reverse,manual)
+	s.Buffer.Each(func(data interface{}, key interface{}) interface{} {
+		sm.Send(data)
+		return nil
+	}, func(_ int, _ interface{}) {})
+
+	s.Adds.Listen(func( data interface{}){
+		sm.Send(data)
+	})
+
+	return sm
 }
 
 func (e *EventRoll) Listen(f ...Callabut) {
@@ -110,14 +155,61 @@ func (s *Streams) CollectTo(fn func(data []interface{})) {
 }
 
 func (s *Streams) Send(data interface{}) {
-	s.drained = false
-	s.Buffer.Add(data, nil)
 
-	if s.manual {
+	if s.Size() > 0{
+		if !s.manual{
+			s.Delegate(data)
+			s.Drains.Emit(data)
+		}else{
+			s.Buffer.Add(data,nil)
+		}
+	}else{
+		s.Buffer.Add(data,nil)
+	}
+
+	if !s.manual {
+		s.Stream()
+	}
+}
+
+func (s *Streams) Delegate(data interface{}){
+	listeners := s.Size()
+
+	if listeners <= 0 {
 		return
 	}
 
-	s.Stream()
+	if s.reverse {
+		s.RevMunch(data)
+	} else {
+		s.Munch(data)
+	}
+
+}
+
+func (s *Streams) Stream() {
+
+	listeners := s.Size()
+
+	if listeners <= 0 {
+		return
+	}
+
+	if s.BufferSize() <= 0 {
+		return
+	}
+
+	if s.BufferSize() > 0{
+		cur := s.Buffer.Delete(0)
+
+		if s.BufferSize() <= 0 {
+			s.Delegate(cur)
+			s.Drains.Emit(cur)
+		}else{
+			s.Delegate(cur)
+		}
+	}
+
 }
 
 func (s *Streams) BufferSize() int {
@@ -128,42 +220,8 @@ func (s *Streams) Clear() {
 	s.Buffer.Clear()
 }
 
-func (s *Streams) NotifyDrain(data interface{}) bool {
-	size := s.Buffer.Length()
-
-	if s.drained {
-		return true
-	}
-
-	if size <= 0 {
+func (s *Streams) NotifyDrain(data interface{}) {
 		s.Drains.Emit(data)
-		s.drained = true
-		return true
-	}
-
-	return false
-}
-
-func (s *Streams) Stream() {
-	listeners := s.Size()
-
-	if listeners <= 0 {
-		return
-	}
-
-	state := s.NotifyDrain(true)
-
-	if state {
-		return
-	}
-
-	cur := s.Buffer.Delete(0)
-
-	if s.reverse {
-		s.RevMunch(cur)
-	} else {
-		s.Munch(cur)
-	}
 }
 
 func (r *Roller) onRoller(i interface{}, next func(g interface{})) {
@@ -313,7 +371,11 @@ func (r *Roller) String() string {
 
 //NewRoller creates and return a pointer to a new roller struct ready for middleware style pattern stack
 func NewRoller() *Roller {
-	return &Roller{[]Callable{}, []Callable{}}
+	roll := &Roller{
+		[]Callable{},
+		[]Callable{},
+	}
+	return roll
 }
 
 //NewEvent creates a new eventroll for event notification to its callbacks
@@ -322,17 +384,47 @@ func NewEvent(id string) *EventRoll {
 	return &EventRoll{list, id}
 }
 
-//NewStream creates a new Stream struct and accepts two bool values:
-//		reverse bool: indicate wether callback queue be called in reverse or not
-//		manaul bool: indicates wether it should be a push model or a pull model
-//(push means every addition of data calls the notification of callbacks immediately)
-//(pull) means the Stream() method is called by the caller when ready to notify callbacks
+/*NewStream creates a new Stream struct and accepts two bool values:
+reverse bool: indicate wether callback queue be called in reverse or not
+manaul bool: indicates wether it should be a push model or a pull model
+(push means every addition of data calls the notification of callbacks immediately)
+(pull) means the Stream() method is called by the caller when ready to notify callbacks
+*/
 func NewStream(reverse bool, manaul bool) *Streams {
+
+	//our internal buffer
 	list := immute.CreateList(make([]interface{}, 0))
-	drain := NewEvent("drain")
-	s := &Streams{NewRoller(), list, drain, manaul, reverse, false}
-	s.ReceiveDone(func(data interface{}) {
-		s.Stream()
+
+	//drain event handler
+	drains := NewEvent("drain")
+
+	sm := &Streams{
+		NewRoller(),
+		list,
+		drains,
+		manaul,
+		reverse,
+	}
+
+	sm.ReceiveDone(func(data interface{}) {
+			sm.Stream()
 	})
-	return s
+
+	return sm
+}
+
+/*
+NewStreamPack returns a new stream pack that allows persistence of stream data
+*/
+func NewStreamPack() *StreamPack {
+	//our internal buffer
+	list := immute.CreateList(make([]interface{}, 0))
+	data := NewEvent("data")
+	sm := &StreamPack{ list,data }
+
+	data.Listen(func(i interface{}){
+		list.Add(i,nil)
+	})
+
+	return sm
 }
