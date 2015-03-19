@@ -116,6 +116,10 @@ func (e *EventRoll) Listen(f ...Callabut) {
 }
 
 func (e *EventRoll) Emit(val interface{}) {
+	if e.Handlers.Length() <= 0 {
+		return
+	}
+
 	e.Handlers.Each(func(data interface{}, key interface{}) interface{} {
 		fn, ok := data.(Callabut)
 
