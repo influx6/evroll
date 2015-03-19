@@ -68,6 +68,8 @@ type Streams struct {
 type EventRoll struct {
 	Handlers *immute.Sequence
 	Id       string
+	fired bool
+	cache interface{}
 }
 
 //Provides a persistent streams data
@@ -115,11 +117,27 @@ func (e *EventRoll) Listen(f ...Callabut) {
 	}
 }
 
+func (e *EventRoll) After(f ...Callabut) {
+	if e.fired {
+		for _, v := range f {
+			e.Handlers.Add(v, nil)
+			v(e.cache)
+		}
+		return
+	}
+
+	for _, v := range f {
+		e.Handlers.Add(v, nil)
+	}
+}
+
 func (e *EventRoll) Emit(val interface{}) {
 	if e.Handlers.Length() <= 0 {
 		return
 	}
 
+	e.cache = val
+	e.fired = true
 	e.Handlers.Each(func(data interface{}, key interface{}) interface{} {
 		fn, ok := data.(Callabut)
 
@@ -398,7 +416,7 @@ func NewRoller() *Roller {
 //NewEvent creates a new eventroll for event notification to its callbacks
 func NewEvent(id string) *EventRoll {
 	list := immute.CreateList(make([]interface{}, 0))
-	return &EventRoll{list, id}
+	return &EventRoll{list, id,false,nil}
 }
 
 /*NewStream creates a new Stream struct and accepts two bool values:
