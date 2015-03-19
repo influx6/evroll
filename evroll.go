@@ -155,7 +155,6 @@ func (s *Streams) CollectTo(fn func(data []interface{})) {
 }
 
 func (s *Streams) Send(data interface{}) {
-
 	if s.Size() > 0{
 		if !s.manual{
 			if s.BufferSize() > 0 {
