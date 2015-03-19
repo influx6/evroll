@@ -52,6 +52,8 @@ type Streamable interface {
 	CollectAndStream()
 	NotifyDrain()
 	Clear()
+	Reverse()
+	Unreverse()
 	BufferSize() int
 }
 
@@ -217,6 +219,14 @@ func (s *Streams) Stream() {
 
 func (s *Streams) BufferSize() int {
 	return s.Buffer.Length()
+}
+
+func (s *Streams) Reverse() {
+	s.reverse = true
+}
+
+func (s *Streams) Unreverse() {
+	s.reverse = false
 }
 
 func (s *Streams) Clear() {
