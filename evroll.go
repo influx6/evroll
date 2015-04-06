@@ -85,10 +85,11 @@ type Streamable interface {
 //Streams struct is the core structure for streams
 type Streams struct {
 	*Roller
-	Buffer  *immute.Sequence
-	Drains  *EventRoll
-	manual  bool
-	reverse bool
+	Buffer   *immute.Sequence
+	Drains   *EventRoll
+	manual   bool
+	reverse  bool
+	finished bool
 }
 
 //EventRoll provides an event struct for event like purposes
@@ -224,11 +225,15 @@ func (s *Streams) CollectTo(fn func(data []interface{})) {
 func (s *Streams) Send(data interface{}) {
 	if s.Size() > 0 {
 		if !s.manual {
-			if s.BufferSize() > 0 {
+			if !s.finished {
 				s.Buffer.Add(data, nil)
 			} else {
-				s.Delegate(data)
-				s.Drains.Emit(data)
+				if s.BufferSize() > 0 {
+					s.Buffer.Add(data, nil)
+				} else {
+					s.Delegate(data)
+					s.Drains.Emit(data)
+				}
 			}
 		} else {
 			s.Buffer.Add(data, nil)
@@ -260,7 +265,7 @@ func (s *Streams) Delegate(data interface{}) {
 
 //Stream is the manual mechanic for forcing streaming operation
 func (s *Streams) Stream() {
-
+	s.finished = false
 	listeners := s.Size()
 
 	if listeners <= 0 {
@@ -680,9 +685,11 @@ func NewStream(reverse bool, manaul bool) *Streams {
 		drains,
 		manaul,
 		reverse,
+		true,
 	}
 
 	sm.ReceiveDone(func(data interface{}) {
+		sm.finished = true
 		sm.Stream()
 	})
 
